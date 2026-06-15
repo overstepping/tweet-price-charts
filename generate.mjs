@@ -250,7 +250,7 @@ function buildChartHtml(payload) {
 </header>
 <div class="wrap">
   <div id="chart"><div id="ov"></div><div id="tip"></div></div>
-  <aside><div class="head">POSTS — newest first · click to locate</div><div id="list"></div></aside>
+  <aside><div class="head">POSTS — oldest first · click to locate</div><div id="list"></div></aside>
 </div>
 <script>
 const DATA = __DATA__;
@@ -280,9 +280,20 @@ const series = chart.addCandlestickSeries({upColor:'#22c55e',downColor:'#ef4444'
 
 const posts = DATA.posts.slice().sort((a,b)=>a.time-b.time);
 
+// lightweight-charts timeToCoordinate() only resolves EXACT bar times, so snap each
+// post timestamp to the candle it falls in for the current timeframe.
+let barTimes = [];
+function snapToBar(t){
+  if(!barTimes.length) return t;
+  let lo=0, hi=barTimes.length-1, ans=barTimes[0];
+  while(lo<=hi){ const m=(lo+hi)>>1; if(barTimes[m]<=t){ ans=barTimes[m]; lo=m+1; } else hi=m-1; }
+  return ans;
+}
+
 function setTF(tf){
   currentTF = tf;
   series.setData(DATA.candles[tf]);
+  barTimes = DATA.candles[tf].map(c=>c.time);
   document.querySelectorAll('.tf button').forEach(b=>b.classList.toggle('on',b.dataset.tf===tf));
   chart.timeScale().fitContent();
   scheduleUpdate();
@@ -314,7 +325,7 @@ function bubbleTip(items, x, y){
 function updateBubbles(){
   const ts=chart.timeScale();
   const pts=[];
-  for(const p of posts){ const x=ts.timeToCoordinate(p.time); if(x!=null) pts.push({p,x}); }
+  for(const p of posts){ const x=ts.timeToCoordinate(snapToBar(p.time)); if(x!=null) pts.push({p,x}); }
   // cluster posts whose screen-x are within TH px (pts already time-sorted ≈ x-sorted)
   const TH=20, clusters=[]; let cur=null;
   for(const it of pts){
@@ -347,8 +358,8 @@ window.addEventListener('resize', scheduleUpdate);
 // ---- sidebar list ----
 const list=document.getElementById('list');
 function render(){
-  const byNew=[...posts].sort((a,b)=>b.time-a.time);
-  list.innerHTML=byNew.map(p=>'<div class="post" data-t="'+p.time+'">'+
+  const ordered=[...posts].sort((a,b)=>a.time-b.time);
+  list.innerHTML=ordered.map(p=>'<div class="post" data-t="'+p.time+'">'+
     '<div class="meta"><span class="badge" style="background:'+acctColor(p.account)+'22;color:'+acctColor(p.account)+'">@'+esc(p.account)+'</span>'+
     '<span>'+fmtTime(p.time)+'</span>'+(p.type==='announcement'?'<span style="color:#22d3ee">▲ announce</span>':'')+
     '<span class="ret '+cls(p.r24h)+'">'+fmtRet(p.r24h)+' /24h</span></div>'+
